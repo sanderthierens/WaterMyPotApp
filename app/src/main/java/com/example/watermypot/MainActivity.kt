@@ -26,11 +26,10 @@ import okhttp3.*
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.*
-import kotlin.collections.ArrayList
 
 
 // The longer it takes the less moisture
@@ -54,6 +53,8 @@ class MainActivity : AppCompatActivity() {
     var moisturePercentage: Float = 0F
     private lateinit var percentageBar: PercentageBar
     private var url: String = "http://178.119.117.90:25566"
+//    private var url: String = "http://192.168.0.246:5000"
+
 
     // Animation
     private val rotateOpen: Animation by lazy { AnimationUtils.loadAnimation(this, R.anim.rotate_open_anim) }
@@ -177,17 +178,17 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun sendPumpCommand(waterTimeValue: String){
-        val jwt: JWT = JWT().setIssuer("sander")
-                .setIssuedAt(ZonedDateTime.now(ZoneOffset.UTC))
-                .setSubject(waterTimeValue)
-                .setExpiration(ZonedDateTime.now(ZoneOffset.UTC).plusMinutes(60))
 
-        // Sign and encode the JWT to a JSON string representation
+        val zone = ZoneId.of("Europe/Berlin");
+
+        val jwt: JWT = JWT().setIssuer("sander")
+                .setIssuedAt(ZonedDateTime.now(zone).minusMinutes(2))
+                .setSubject(waterTimeValue)
+                .setExpiration(ZonedDateTime.now(zone).plusMinutes(60))
+
 
         // Sign and encode the JWT to a JSON string representation
         val encodedJWT: String = JWT.getEncoder().encode(jwt, signer)
-
-        println("token: $encodedJWT")
 
         val pumpURL = "$url/pump"
         val token = "Bearer $encodedJWT"
@@ -221,17 +222,19 @@ class MainActivity : AppCompatActivity() {
 
             // Create success toast
             Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-
-
         }
     }
 
     private fun getRequest(url: String): Request {
         // Simulate a delay to represent fetching data from a database or network
+
+        val zone = ZoneId.of("Europe/Berlin");
+        val zonedDateTime = ZonedDateTime.now(zone);
+
         val jwt: JWT = JWT().setIssuer("sander")
-                .setIssuedAt(ZonedDateTime.now(ZoneOffset.UTC))
+                .setIssuedAt(zonedDateTime.minusMinutes(5))
                 .setSubject("moisture")
-                .setExpiration(ZonedDateTime.now(ZoneOffset.UTC).plusMinutes(60))
+                .setExpiration(zonedDateTime.plusMinutes(60))
 
         // Sign and encode the JWT to a JSON string representation
         val encodedJWT: String = JWT.getEncoder().encode(jwt, signer)
@@ -272,7 +275,6 @@ class MainActivity : AppCompatActivity() {
                 println("Response code: ${response.code}")
 
                 val seriesString = response.body?.string().toString()
-                println(seriesString)
                 val sType = object : TypeToken<List<SensorEntry>>() {}.type
                 val seriesList = Gson().fromJson<List<SensorEntry>>(seriesString, sType)
                 var dates: MutableList<String> = mutableListOf<String>()
@@ -297,6 +299,7 @@ class MainActivity : AppCompatActivity() {
                     val decimalDigits: Int
                         get() = 0
                 }
+
                 class MyXAxisFormatter(dates: MutableList<String>) : ValueFormatter() {
                     override fun getAxisLabel(value: Float, axis: AxisBase?): String {
                         return dates.getOrNull(value.toInt()) ?: value.toString()
@@ -326,18 +329,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun parseMoistureSignal(signal: String){
-        println(signal)
-        if(! signal.contains("No moisture level")){
-            moisturePercentage = calculatePercentage(signal.toFloat())
-            println("%.3f".format(moisturePercentage))
+        try {
+            if (!signal.contains("No moisture level")) {
+                moisturePercentage = calculatePercentage(signal.toFloat())
 
-            // Avoid showing wrongly read analog signal but still allow
-            if(moisturePercentage <= 2 && moisturePercentage > -0.1){
-                moistureValue = "%.1f".format(moisturePercentage * 100) + "%"
+                // Avoid showing wrongly read analog signal but still allow
+                if (moisturePercentage <= 2 && moisturePercentage > -0.1) {
+                    moistureValue = "%.1f".format(moisturePercentage * 100) + "%"
+                }
+            } else {
+                moistureValue = signal;
             }
         }
-        else {
-            moistureValue = signal;
+        catch (e: java.lang.NumberFormatException) {
+            println("Number format exception: $signal")
         }
 
     }
@@ -352,7 +357,6 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     moistureText.text = moistureValue
                     if(! moistureValue.contains("No moisture level")){
-                        println("it contains: ${moistureValue}")
                         if(moisturePercentage <= 1 && moisturePercentage > 0){
                             percentageBar.setMoistureValue(moisturePercentage)
                             percentageBar.invalidate()
@@ -360,7 +364,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                 }
-                delay(5000)
+                delay(2000)
             }
         }
     }
